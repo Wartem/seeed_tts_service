@@ -24,7 +24,7 @@ A high-performance Text-to-Speech (TTS) service built with FastAPI and Piper TTS
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/fastapi-tts-service
+git clone https://github.com/Wartem/fastapi-tts-service
 cd fastapi-tts-service
 ```
 
