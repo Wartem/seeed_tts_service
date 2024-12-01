@@ -1,0 +1,84 @@
+2024-11-30 06:15:23,953 - ERROR - Request failed: POST /tts - Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 8912, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 8912)]
+2024-11-30 06:15:23,954 - INFO - Backing off _make_request(...) for 0.8s (aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 8912, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 8912)])
+2024-11-30 06:15:24,726 - ERROR - Request failed: POST /tts - Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('127.0.0.1', 8912), [Errno 111] Connect call failed ('::1', 8912, 0, 0)]
+2024-11-30 06:15:24,726 - INFO - Backing off _make_request(...) for 0.9s (aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('127.0.0.1', 8912), [Errno 111] Connect call failed ('::1', 8912, 0, 0)])
+2024-11-30 06:15:25,591 - ERROR - Request failed: POST /tts - Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 8912, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 8912)]
+2024-11-30 06:15:25,592 - ERROR - Giving up _make_request(...) after 3 tries (aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 8912, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 8912)])
+2024-11-30 06:16:58,185 - ERROR - Request failed: POST /tts - Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 8912, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 8912)]
+2024-11-30 06:16:58,186 - INFO - Backing off _make_request(...) for 0.4s (aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 8912, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 8912)])
+2024-11-30 06:16:58,576 - ERROR - Request failed: POST /tts - Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('127.0.0.1', 8912), [Errno 111] Connect call failed ('::1', 8912, 0, 0)]
+2024-11-30 06:16:58,577 - INFO - Backing off _make_request(...) for 0.2s (aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('127.0.0.1', 8912), [Errno 111] Connect call failed ('::1', 8912, 0, 0)])
+2024-11-30 06:16:58,781 - ERROR - Request failed: POST /tts - Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 8912, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 8912)]
+2024-11-30 06:16:58,782 - ERROR - Giving up _make_request(...) after 3 tries (aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 8912, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 8912)])
+2024-11-30 06:43:32,704 - INFO - TTS request sent successfully: tts_1732967012701
+2024-11-30 06:45:21,037 - INFO - TTS request sent successfully: tts_1732967121034
+2024-11-30 06:46:03,455 - INFO - TTS request sent successfully: tts_1732967163452
+2024-11-30 06:46:58,402 - INFO - TTS request sent successfully: tts_1732967218399
+2024-11-30 06:48:55,314 - ERROR - Request failed: POST /tts - 
+2024-11-30 06:48:55,314 - INFO - Backing off _make_request(...) for 0.8s (TimeoutError)
+2024-11-30 06:49:43,314 - ERROR - Request failed: POST /tts - 
+2024-11-30 06:49:43,314 - INFO - Backing off _make_request(...) for 0.0s (TimeoutError)
+2024-11-30 06:49:54,314 - ERROR - Request failed: POST /tts - 
+2024-11-30 06:49:54,315 - INFO - Backing off _make_request(...) for 0.3s (TimeoutError)
+2024-11-30 06:50:05,313 - ERROR - Request failed: POST /tts - 
+2024-11-30 06:50:05,313 - ERROR - Giving up _make_request(...) after 3 tries (TimeoutError)
+2024-11-30 07:42:00,222 - INFO - TTS request sent successfully: tts_1732970520214
+2024-11-30 07:42:18,514 - INFO - TTS request sent successfully: tts_1732970538509
+2024-11-30 07:42:40,945 - INFO - TTS request sent successfully: tts_1732970560941
+2024-11-30 07:42:58,402 - INFO - TTS request sent successfully: tts_1732970578398
+2024-11-30 07:43:27,840 - INFO - TTS request sent successfully: tts_1732970607836
+2024-11-30 07:43:42,774 - INFO - TTS request sent successfully: tts_1732970622770
+2024-11-30 07:43:55,406 - INFO - TTS request sent successfully: tts_1732970635402
+2024-11-30 07:47:02,422 - INFO - TTS request sent successfully: tts_1732970822420
+2024-11-30 07:47:24,507 - INFO - TTS request sent successfully: tts_1732970844504
+2024-11-30 07:47:50,146 - INFO - TTS request sent successfully: tts_1732970870143
+2024-11-30 07:49:00,850 - INFO - TTS request sent successfully: tts_1732970940847
+2024-11-30 08:01:09,715 - INFO - TTS request sent successfully: tts_1732971669712
+2024-11-30 08:01:27,462 - INFO - TTS request sent successfully: tts_1732971687458
+2024-11-30 08:36:23,046 - INFO - TTS request sent successfully: tts_1732973783043
+2024-11-30 08:36:28,317 - INFO - TTS request sent successfully: tts_1732973788314
+2024-11-30 08:40:24,421 - ERROR - Request failed: POST /tts - Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 8912, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 8912)]
+2024-11-30 08:40:24,425 - INFO - Backing off _make_request(...) for 0.6s (aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 8912, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 8912)])
+2024-11-30 08:40:24,984 - ERROR - Request failed: POST /tts - Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('127.0.0.1', 8912), [Errno 111] Connect call failed ('::1', 8912, 0, 0)]
+2024-11-30 08:40:24,985 - INFO - Backing off _make_request(...) for 0.5s (aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('127.0.0.1', 8912), [Errno 111] Connect call failed ('::1', 8912, 0, 0)])
+2024-11-30 08:40:25,438 - ERROR - Request failed: POST /tts - Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 8912, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 8912)]
+2024-11-30 08:40:25,439 - ERROR - Giving up _make_request(...) after 3 tries (aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 8912, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 8912)])
+2024-11-30 08:43:16,243 - INFO - TTS request sent successfully: tts_1732974196135
+2024-11-30 08:43:23,782 - INFO - TTS request sent successfully: tts_1732974203779
+2024-11-30 08:43:32,674 - INFO - TTS request sent successfully: tts_1732974212671
+2024-11-30 08:44:58,298 - INFO - TTS request sent successfully: tts_1732974298295
+2024-11-30 08:45:05,556 - INFO - TTS request sent successfully: tts_1732974305552
+2024-11-30 08:45:31,433 - INFO - TTS request sent successfully: tts_1732974331430
+2024-11-30 08:46:25,936 - INFO - TTS request sent successfully: tts_1732974385933
+2024-11-30 08:46:37,110 - INFO - TTS request sent successfully: tts_1732974397107
+2024-11-30 08:46:49,193 - INFO - TTS request sent successfully: tts_1732974409191
+2024-11-30 08:47:52,096 - INFO - TTS request sent successfully: tts_1732974472093
+2024-11-30 08:47:58,694 - INFO - TTS request sent successfully: tts_1732974478690
+2024-11-30 11:29:17,854 - ERROR - Request failed: POST /tts - Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 8912, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 8912)]
+2024-11-30 11:29:17,858 - INFO - Backing off _make_request(...) for 0.3s (aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 8912, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 8912)])
+2024-11-30 11:29:18,188 - ERROR - Request failed: POST /tts - Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('127.0.0.1', 8912), [Errno 111] Connect call failed ('::1', 8912, 0, 0)]
+2024-11-30 11:29:18,189 - INFO - Backing off _make_request(...) for 1.3s (aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('127.0.0.1', 8912), [Errno 111] Connect call failed ('::1', 8912, 0, 0)])
+2024-11-30 11:29:19,553 - ERROR - Request failed: POST /tts - Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 8912, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 8912)]
+2024-11-30 11:29:19,553 - ERROR - Giving up _make_request(...) after 3 tries (aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 8912, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 8912)])
+2024-11-30 11:33:21,740 - ERROR - Request failed: POST /tts - Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 8912, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 8912)]
+2024-11-30 11:33:21,744 - INFO - Backing off _make_request(...) for 0.8s (aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 8912, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 8912)])
+2024-11-30 11:33:22,577 - ERROR - Request failed: POST /tts - Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('127.0.0.1', 8912), [Errno 111] Connect call failed ('::1', 8912, 0, 0)]
+2024-11-30 11:33:22,578 - INFO - Backing off _make_request(...) for 0.9s (aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('127.0.0.1', 8912), [Errno 111] Connect call failed ('::1', 8912, 0, 0)])
+2024-11-30 11:33:23,505 - ERROR - Request failed: POST /tts - Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 8912, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 8912)]
+2024-11-30 11:33:23,505 - ERROR - Giving up _make_request(...) after 3 tries (aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 8912, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 8912)])
+2024-11-30 11:33:36,313 - ERROR - Request failed: GET /status - Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 8912, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 8912)]
+2024-11-30 11:33:36,313 - INFO - Backing off _make_request(...) for 0.1s (aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 8912, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 8912)])
+2024-11-30 11:33:36,388 - ERROR - Request failed: GET /status - Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('127.0.0.1', 8912), [Errno 111] Connect call failed ('::1', 8912, 0, 0)]
+2024-11-30 11:33:36,388 - INFO - Backing off _make_request(...) for 1.8s (aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('127.0.0.1', 8912), [Errno 111] Connect call failed ('::1', 8912, 0, 0)])
+2024-11-30 11:33:38,215 - ERROR - Request failed: GET /status - Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 8912, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 8912)]
+2024-11-30 11:33:38,215 - ERROR - Giving up _make_request(...) after 3 tries (aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host localhost:8912 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 8912, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 8912)])
+2024-11-30 11:54:08,703 - INFO - TTS request sent successfully: tts_1732985648700
+2024-11-30 11:59:06,145 - INFO - TTS request sent successfully: tts_1732985946142
+2024-11-30 15:23:24,411 - ERROR - Request failed: POST /tts - 404, message='Not Found', url='http://localhost:8912/tts'
+2024-11-30 15:23:24,411 - INFO - Backing off _make_request(...) for 0.4s (aiohttp.client_exceptions.ClientResponseError: 404, message='Not Found', url='http://localhost:8912/tts')
+2024-11-30 15:23:24,774 - ERROR - Request failed: POST /tts - 404, message='Not Found', url='http://localhost:8912/tts'
+2024-11-30 15:23:24,774 - INFO - Backing off _make_request(...) for 1.1s (aiohttp.client_exceptions.ClientResponseError: 404, message='Not Found', url='http://localhost:8912/tts')
+2024-11-30 15:23:25,850 - ERROR - Request failed: POST /tts - 404, message='Not Found', url='http://localhost:8912/tts'
+2024-11-30 15:23:25,850 - ERROR - Giving up _make_request(...) after 3 tries (aiohttp.client_exceptions.ClientResponseError: 404, message='Not Found', url='http://localhost:8912/tts')
+2024-11-30 15:42:22,366 - INFO - Text request sent successfully: audio_1732999342358
+2024-11-30 15:42:41,530 - INFO - Text request sent successfully: audio_1732999361527

@@ -1,0 +1,107 @@
+The service is running but the client can't connect to it. This is likely due to one of these issues:
+
+1. Check if the service is actually listening on port 8912:
+```bash
+sudo netstat -tulpn | grep 8912
+```
+
+2. The service might be bound to a specific IP instead of all interfaces. Let's check the service logs:
+```bash
+sudo journalctl -u piper-tts-service -n 50
+```
+
+3. Could be a permissions issue with the port. Try running the TTS client with sudo temporarily to test:
+```bash
+sudo python tts_client.py
+```
+
+4. If the service is running in a virtual environment, make sure all required packages are installed in that environment:
+```bash
+source .venv/bin/activate
+pip install aiohttp requests rich backoff
+```
+
+Can you run the netstat command above and share the output? That will help us confirm whether the service is actually listening on the expected port.
+
+Also, can you check your piper-tts-service.service file? It should contain something like this:
+
+```ini
+[Service]
+ExecStart=/home/wartem/proj/seeed_tts_service/.venv/bin/python /home/wartem/proj/seeed_tts_service/piper_tts_service.py
+WorkingDirectory=/home/wartem/proj/seeed_tts_service
+User=wartem
+```
+
+Let me know what you find and we can fix the connection issue.
+
+
+
+
+
+Here's how to rename and clean up the service:
+
+1. First stop and disable the current service:
+```bash
+sudo systemctl stop piper-tts-service
+sudo systemctl disable piper-tts-service
+```
+
+2. Remove the old service file:
+```bash
+sudo rm /etc/systemd/system/piper-tts-service.service
+# Also remove any override files if they exist
+sudo rm -rf /etc/systemd/system/piper-tts-service.service.d/
+```
+
+3. Create the new service file with underscore:
+```bash
+sudo nano /etc/systemd/system/piper_tts_service.service
+```
+
+4. Add the updated content:
+```ini
+[Unit]
+Description=Piper TTS Service
+After=network.target sound.target
+
+[Service]
+Type=simple
+User=wartem
+Group=wartem
+WorkingDirectory=/home/wartem/proj/seeed_tts_service
+Environment=PATH=/home/wartem/proj/seeed_tts_service/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+Environment=PYTHONUNBUFFERED=1
+
+# Performance optimizations
+Nice=-10
+IOSchedulingClass=realtime
+IOSchedulingPriority=0
+CPUSchedulingPolicy=fifo
+CPUSchedulingPriority=99
+CPUQuota=80%
+
+# Audio access
+SupplementaryGroups=audio gpio
+
+ExecStart=/home/wartem/proj/seeed_tts_service/.venv/bin/python /home/wartem/proj/seeed_tts_service/piper_tts_service.py
+Restart=always
+RestartSec=5
+
+# Security
+PrivateTmp=true
+ProtectSystem=full
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+5. Reload systemd and start the new service:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable piper_tts_service
+sudo systemctl start piper_tts_service
+sudo systemctl status piper_tts_service
+```
+
+This follows your naming convention of using underscores for your own services while keeping system services with dashes.

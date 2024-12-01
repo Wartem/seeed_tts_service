@@ -1,0 +1,981 @@
+import os
+from pathlib import Path
+import sounddevice as sd
+import numpy as np
+from piper import PiperVoice
+import requests
+from tqdm import tqdm
+import logging
+from typing import Optional, Dict, Tuple
+import tempfile
+import wave
+import soundfile as sf
+from dataclasses import dataclass
+import threading
+from queue import Queue, Empty
+import asyncio
+
+from fastapi import FastAPI, HTTPException, Request
+from pydantic import BaseModel
+import uvicorn
+from contextlib import asynccontextmanager
+from typing import Dict, Optional
+import time
+
+import psutil
+import threading
+from datetime import datetime
+
+from fastapi import HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
+import time
+
+from typing import Any
+import signal
+from functools import lru_cache
+import re
+
+RATE_LIMIT_SECONDS = 0.1  # Min time between requests
+last_request_time = 0
+
+def setup_logging():
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    # Create our custom logger
+    logger = logging.getLogger("app.timing")
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+
+@dataclass
+class PiperConfig:
+    """Configuration for Piper TTS"""
+    model_name: str = "sv_SE-nst-medium"
+    models_base_url: str = "https://huggingface.co/rhasspy/piper-voices/resolve/main/sv/sv_SE/nst/medium"
+    sample_rate: int = 22050
+    debug_logging: bool = False
+    device_id: Optional[int] = None
+    models_dir: Optional[str] = None
+
+class PiperTTSService:
+    """Piper TTS service optimized for Raspberry Pi 5"""
+    
+    MODEL_FILES = {
+        "model": "sv_SE-nst-medium.onnx",
+        "config": "sv_SE-nst-medium.onnx.json"
+    }
+    
+    def __init__(self, config: Optional[PiperConfig] = None):
+        """Initialize service with optional configuration"""
+        self.config = config or PiperConfig()
+        self.logger = self._setup_logger()
+        
+        # Initialize AudioDeviceManager first
+        self.audio_manager = AudioDeviceManager(self.logger)
+        
+        # Setup model directory
+        self.models_dir = Path(self.config.models_dir or Path.home() / ".local" / "share" / "piper")
+        self.models_dir = self.models_dir / self.config.model_name
+        
+        # Initialize components
+        self.voice: Optional[PiperVoice] = None
+        self.temp_dir = tempfile.mkdtemp(prefix='piper_', dir=str(Path.home() / ".cache"))
+        self._audio_queue = Queue()
+        self._stop_event = threading.Event()
+        self._audio_thread = None
+        self._current_audio_event = threading.Event()
+        
+        # Initialize service
+        self._setup()
+        
+    def _setup_logger(self) -> logging.Logger:
+        """Configure logging with performance-optimized settings"""
+        logger = logging.getLogger("PiperTTSService")
+        level = logging.DEBUG if self.config.debug_logging else logging.INFO
+        logger.setLevel(level)
+        
+        if not logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+        
+        return logger
+    
+    def _setup(self):
+        """Complete setup of the service"""
+        try:
+            # Setup directory
+            self.models_dir.mkdir(parents=True, exist_ok=True)
+            self.logger.debug(f"Using models directory: {self.models_dir}")
+            
+            # Setup audio device
+            self._setup_audio_device()
+            
+            # Initialize voice
+            self._initialize_voice()
+            
+            # Start audio thread
+            self._start_audio_thread()
+            
+        except Exception as e:
+            self.logger.error(f"Setup failed: {e}")
+            self.cleanup()
+            raise
+    
+    def _setup_audio_device(self):
+        """Initialize audio device using AudioDeviceManager"""
+        try:
+            device_id = self.audio_manager.setup_audio_device()
+            if device_id is not None:
+                self.config.device_id = device_id
+                self.logger.info(f"Audio device initialized with ID: {device_id}")
+            else:
+                raise RuntimeError("Failed to initialize audio device")
+        except Exception as e:
+            self.logger.error(f"Audio device setup failed: {e}")
+            raise
+
+    def _download_file(self, filename: str) -> Path:
+        """Download model file with progress tracking and verification"""
+        output_path = self.models_dir / filename
+        
+        if output_path.exists():
+            self.logger.debug(f"File exists: {filename}")
+            return output_path
+        
+        url = f"{self.config.models_base_url}/{filename}"
+        self.logger.info(f"Downloading {url}")
+        
+        try:
+            response = requests.get(url, stream=True)
+            response.raise_for_status()
+            
+            total_size = int(response.headers.get('content-length', 0))
+            
+            with open(output_path, 'wb') as f, tqdm(
+                desc=filename,
+                total=total_size,
+                unit='iB',
+                unit_scale=True,
+                unit_divisor=1024,
+            ) as pbar:
+                for data in response.iter_content(chunk_size=8192):
+                    size = f.write(data)
+                    pbar.update(size)
+            
+            return output_path
+            
+        except Exception as e:
+            self.logger.error(f"Download failed for {filename}: {e}")
+            if output_path.exists():
+                output_path.unlink()
+            raise
+
+    def _initialize_voice(self):
+        """Initialize Piper voice with model loading"""
+        try:
+            model_path = self._download_file(self.MODEL_FILES["model"])
+            config_path = self._download_file(self.MODEL_FILES["config"])
+            
+            self.voice = PiperVoice.load(str(model_path), str(config_path))
+            self.logger.info("Voice initialized successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Voice initialization failed: {e}")
+            raise
+
+    def _start_audio_thread(self):
+        """Start the audio playback thread"""
+        self._stop_event.clear()
+        self._audio_thread = threading.Thread(target=self._audio_worker, daemon=True)
+        self._audio_thread.start()
+
+    def _audio_worker(self):
+        """Worker thread for audio playback"""
+        while not self._stop_event.is_set():
+            try:
+                audio_file = self._audio_queue.get(timeout=0.1)
+                self._current_audio_event.clear()
+                self._current_audio = None
+
+                try:
+                    self.logger.debug(f"Loading audio file: {os.path.basename(audio_file)}")
+                    data, sample_rate = sf.read(audio_file)
+                    
+                    # Keep original format and avoid unnecessary conversions
+                    if len(data.shape) > 1:
+                        data = np.mean(data, axis=1)
+
+                    # Wait for any previous playback to finish completely
+                    sd.wait()
+                    
+                    # Store current audio data
+                    self._current_audio = (data, sample_rate)
+                    
+                    if not hasattr(self, '_paused') or not self._paused:
+                        # Play audio with proper stream management
+                        stream = sd.OutputStream(
+                            samplerate=sample_rate,
+                            channels=1,
+                            dtype=data.dtype,
+                            device=self.config.device_id
+                        )
+                        with stream:
+                            stream.write(data)
+                            stream.close()
+                        self.logger.debug("Audio playback completed")
+                        
+                finally:
+                    if os.path.exists(audio_file):
+                        os.remove(audio_file)
+                    self._current_audio_event.set()
+                        
+            except Empty:
+                continue
+            except Exception as e:
+                self.logger.error(f"Audio playback error: {e}")
+                self._current_audio_event.set()
+                    
+        def pause(self):
+            """Pause audio playback"""
+            self.logger.info("Pausing audio playback")
+            self._paused = True
+            sd.stop()
+
+        def resume(self):
+            """Resume audio playback"""
+            self.logger.info("Resuming audio playback")
+            self._paused = False
+            # Resume current audio if available
+            if hasattr(self, '_current_audio') and self._current_audio:
+                data, sample_rate = self._current_audio
+                sd.play(data, sample_rate, blocking=True)
+
+    async def synthesize_and_play(self, text: str) -> None:
+        """Synthesize text and queue for playback"""
+        try:
+            self.logger.info(f"Starting synthesis for text: {text[:50]}...")
+            
+            # Generate unique temporary filename
+            temp_path = os.path.join(self.temp_dir, f"temp_{threading.get_ident()}.wav")
+            self.logger.debug(f"Using temp file: {temp_path}")
+            
+            # Create wave file
+            self.logger.debug("Creating wave file...")
+            with wave.open(temp_path, 'wb') as wav_file:
+                wav_file.setnchannels(1)
+                wav_file.setsampwidth(2)
+                wav_file.setframerate(self.config.sample_rate)
+                self.voice.synthesize(text, wav_file)
+            
+            # Queue for playback
+            self.logger.info("Queueing audio for playback")
+            self._current_audio_event.clear()
+            self._audio_queue.put(temp_path)
+            
+            # Wait for playback completion
+            self.logger.debug("Waiting for playback completion")
+            while not self._current_audio_event.is_set():
+                await asyncio.sleep(0.1)
+            self.logger.info("Playback completed")
+                
+        except Exception as e:
+            self.logger.error(f"Synthesis failed: {e}")
+            raise
+
+    def cleanup(self):
+        """Clean up resources"""
+        try:
+            # Stop audio thread
+            self._stop_event.set()
+            if self._audio_thread:
+                self._audio_thread.join(timeout=1.0)
+            
+            # Stop any playing audio
+            sd.stop()
+            
+            # Clear queue and remove files
+            while not self._audio_queue.empty():
+                try:
+                    file = self._audio_queue.get_nowait()
+                    if os.path.exists(file):
+                        os.remove(file)
+                except Empty:
+                    break
+            
+            # Clean up temp directory
+            if self.temp_dir and os.path.exists(self.temp_dir):
+                import shutil
+                shutil.rmtree(self.temp_dir, ignore_errors=True)
+            
+            self.voice = None
+            
+        except Exception as e:
+            self.logger.error(f"Cleanup error: {e}")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.cleanup()
+        
+class TTSRequest(BaseModel):
+    text: str
+    priority: Optional[bool] = False
+
+class QueueItem:
+    def __init__(self, text: str, priority: bool = False):
+        self.id = f"tts_{int(time.time() * 1000)}"
+        self.text = text
+        self.priority = priority
+        self.timestamp = time.time()
+        self.status = "queued"
+
+class QueueManager:
+    def __init__(self, maxsize: int = 100):
+        self.regular_queue = asyncio.Queue(maxsize=maxsize)
+        self.priority_queue = asyncio.Queue(maxsize=maxsize)
+        self.items: Dict[str, QueueItem] = {}
+        self.currently_playing: Optional[str] = None
+        self.processing = asyncio.Event()
+
+    async def add_item(self, text: str, priority: bool = False) -> str:
+        """Add item to appropriate queue"""
+        item = QueueItem(text, priority)
+        self.items[item.id] = item
+        
+        queue = self.priority_queue if priority else self.regular_queue
+        try:
+            await queue.put(item)
+            return item.id
+        except asyncio.QueueFull:
+            del self.items[item.id]
+            raise HTTPException(status_code=503, detail="Queue is full")
+
+    async def get_next_item(self) -> Optional[QueueItem]:
+        """Get next item prioritizing priority queue"""
+        try:
+            # Check priority queue first
+            if not self.priority_queue.empty():
+                return await self.priority_queue.get()
+            # Then regular queue
+            if not self.regular_queue.empty():
+                return await self.regular_queue.get()
+        except Exception as e:
+            logging.error(f"Error getting next queue item: {e}")
+        return None
+
+    def get_queue_status(self) -> dict:
+        """Get current queue status"""
+        return {
+            "currently_playing": self.currently_playing,
+            "priority_queue_size": self.priority_queue.qsize(),
+            "regular_queue_size": self.regular_queue.qsize(),
+            "is_processing": self.processing.is_set(),
+            "items": [
+                {
+                    "id": id,
+                    "text": item.text[:30] + "..." if len(item.text) > 30 else item.text,
+                    "priority": item.priority,
+                    "status": item.status,
+                    "queued_at": item.timestamp
+                }
+                for id, item in self.items.items()
+            ]
+        }
+        
+@dataclass
+class AudioDeviceConfig:
+    device_id: Optional[int] = None
+    sample_rate: int = 22050
+    channels: int = 1
+    dtype: str = 'float32'
+    blocksize: int = 2048
+    latency: float = 0.1
+    buffer_size: int = 4096
+    device_test_timeout: float = 2.0
+    allow_ucm_fail: bool = True  # Allow continue on UCM initialization failure
+        
+class AudioDeviceManager:
+    """Manages audio device initialization and recovery"""
+    
+    def __init__(self, logger, config: Optional[AudioDeviceConfig] = None):
+        self.config = config or AudioDeviceConfig()
+        self.logger = logger
+        self._device_lock = threading.Lock()
+        self._current_device: Optional[Dict] = None
+        self._initialized = False
+        self._alsa_config_path = "/tmp/alsa-fallback.conf"
+        
+        # Add missing attributes
+        self.last_device_check = 0  # Initialize last check time
+        self.check_interval = 60  # Check every 60 seconds by default
+        self.current_device = None  # Initialize current device
+        self.device_info = None  # Initialize device info
+        
+    def _setup_logger(self):
+        logger = logging.getLogger("AudioDeviceManager")
+        if not logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+            logger.setLevel(logging.INFO)
+        return logger
+        
+    def setup_audio_device(self):
+        """Configure audio device with fallback options"""
+        import sounddevice as sd
+        import time
+        from contextlib import contextmanager
+        
+        @contextmanager
+        def ignore_stderr():
+            import os, sys
+            devnull = os.open(os.devnull, os.O_WRONLY)
+            old_stderr = os.dup(2)
+            sys.stderr.flush()
+            os.dup2(devnull, 2)
+            os.close(devnull)
+            try:
+                yield
+            finally:
+                os.dup2(old_stderr, 2)
+                os.close(old_stderr)
+        
+        # Only check device list if enough time has passed
+        current_time = time.time()
+        if current_time - self.last_device_check < self.check_interval and self.current_device is not None:
+            return self.current_device
+            
+        self.last_device_check = current_time
+        
+        try:
+            # Force reinitialize sound system
+            with ignore_stderr():
+                if hasattr(sd, '_terminate'):
+                    sd._terminate()
+                sd._initialize()
+            
+            devices = sd.query_devices()
+            self.logger.info("Available audio devices:")
+            for idx, device in enumerate(devices):
+                self.logger.info(f"  {idx}: {device['name']} (outputs: {device['max_output_channels']})")
+            
+            device_order = [
+                ('seeed', "Seeed ReSpeaker device"),
+                ('bcm2835', "Raspberry Pi onboard audio"),
+                ('default', "Default audio device"),
+                ('', "Any available output device")  # Empty string matches any device name
+            ]
+            
+            for name, desc in device_order:
+                for idx, device in enumerate(devices):
+                    if device['max_output_channels'] > 0 and (not name or name.lower() in device['name'].lower()):
+                        try:
+                            if self._test_device(idx, device):
+                                self.logger.info(f"Selected {desc}: {device['name']}")
+                                return idx
+                        except Exception as e:
+                            self.logger.warning(f"Failed to initialize {desc} ({device['name']}): {e}")
+                            continue
+            
+            raise RuntimeError("No working audio output device found")
+            
+        except Exception as e:
+            self.logger.error(f"Audio device setup failed: {e}")
+            if self.current_device is not None:
+                return self.current_device
+            raise
+
+    def reset_device(self):
+        """Reset audio device state"""
+        import sounddevice as sd
+        try:
+            sd.stop()
+            if hasattr(sd, '_terminate'):
+                sd._terminate()
+            self.current_device = None
+            self.last_device_check = 0  # Force recheck
+            self.device_info = None
+        except Exception as e:
+            self.logger.error(f"Error resetting device: {e}")
+            
+    def setup_audio_device(self):
+        """Configure audio device with fallback options"""
+        import sounddevice as sd
+        import time
+        from contextlib import contextmanager
+        
+        @contextmanager
+        def ignore_stderr():
+            import os, sys
+            devnull = os.open(os.devnull, os.O_WRONLY)
+            old_stderr = os.dup(2)
+            sys.stderr.flush()
+            os.dup2(devnull, 2)
+            os.close(devnull)
+            try:
+                yield
+            finally:
+                os.dup2(old_stderr, 2)
+                os.close(old_stderr)
+        
+        # Only check device list if enough time has passed
+        current_time = time.time()
+        if current_time - self.last_device_check < self.check_interval and self.current_device is not None:
+            return self.current_device
+            
+        self.last_device_check = current_time
+        
+        try:
+            # Force reinitialize sound system
+            with ignore_stderr():
+                if hasattr(sd, '_terminate'):
+                    sd._terminate()
+                sd._initialize()
+            
+            devices = sd.query_devices()
+            self.logger.info("Available audio devices:")
+            for idx, device in enumerate(devices):
+                self.logger.info(f"  {idx}: {device['name']} (outputs: {device['max_output_channels']})")
+            
+            device_order = [
+                ('seeed', "Seeed ReSpeaker device"),
+                ('bcm2835', "Raspberry Pi onboard audio"),
+                ('default', "Default audio device"),
+                ('', "Any available output device")  # Empty string matches any device name
+            ]
+            
+            for name, desc in device_order:
+                for idx, device in enumerate(devices):
+                    if device['max_output_channels'] > 0 and (not name or name.lower() in device['name'].lower()):
+                        try:
+                            if self._test_device(idx, device):
+                                self.logger.info(f"Selected {desc}: {device['name']}")
+                                return idx
+                        except Exception as e:
+                            self.logger.warning(f"Failed to initialize {desc} ({device['name']}): {e}")
+                            continue
+            
+            raise RuntimeError("No working audio output device found")
+            
+        except Exception as e:
+            self.logger.error(f"Audio device setup failed: {e}")
+            if self.current_device is not None:
+                return self.current_device
+            raise
+    
+    def _test_device(self, idx, device):
+        """Test device with proper initialization and cleanup"""
+        import sounddevice as sd
+        import numpy as np
+        
+        try:
+            # Configure device settings
+            sd.default.device = idx
+            sd.default.samplerate = int(device['default_samplerate'])
+            sd.default.channels = 1  # Force mono output
+            
+            # Store device info
+            self.device_info = {
+                'name': device['name'],
+                'index': idx,
+                'channels': 1,
+                'samplerate': sd.default.samplerate
+            }
+            
+            # Create a very short test stream
+            test_data = np.zeros(512, dtype=np.float32)
+            with sd.OutputStream(
+                samplerate=sd.default.samplerate,
+                channels=1,
+                device=idx,
+                dtype=np.float32
+            ) as stream:
+                stream.write(test_data)
+            
+            self.current_device = idx
+            self.logger.info(f"Successfully initialized audio device: {device['name']} (ID: {idx})")
+            return True
+            
+        except Exception as e:
+            self.logger.warning(f"Device test failed for {device['name']}: {e}")
+            return False
+
+class PiperTTSServiceWrapper:
+    def __init__(self, config: Optional[PiperConfig] = None):
+        # Initialize base TTS service first
+        self.tts_service = PiperTTSService(config)
+        
+        # Initialize queue management
+        self.queue_manager = QueueManager()
+        self.processing_task = None
+        
+        # Initialize monitoring
+        self.system_monitor = SystemMonitor()
+        self.heartbeat_task = None
+        
+        # Initialize state management
+        self.is_paused = asyncio.Event()
+        self.is_stopped = asyncio.Event()
+        
+        # Start monitoring
+        self.system_monitor.start()
+        
+        # Setup logging - use a distinct logger for the wrapper
+        self.logger = logging.getLogger("PiperTTSServiceWrapper")
+
+    async def start_processing(self):
+        """Start queue processing"""
+        self.processing_task = asyncio.create_task(self._process_queue())
+        self.heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+        
+    async def pause(self):
+        """Pause service"""
+        self.tts_service.pause()
+        self.is_paused.set()
+        self.queue_manager.processing.clear()
+
+    async def resume(self):
+        """Resume service"""
+        self.tts_service.resume()
+        self.is_paused.clear()
+        self.is_stopped.clear()
+        self.queue_manager.processing.set()
+        
+    async def _heartbeat_loop(self):
+        while True:
+            try:
+                # Generate 20ms of silence at 22050Hz
+                silence = np.zeros(441, dtype=np.float32)  # 0.02s * 22050Hz
+                sd.play(silence, self.tts_service.config.sample_rate, blocking=True)
+                await asyncio.sleep(300)  # 5 minutes
+            except Exception as e:
+                self.logger.error(f"Heartbeat error: {e}")
+                await asyncio.sleep(1)
+    
+    async def cleanup(self):
+        if self.processing_task:
+            self.processing_task.cancel()
+            try:
+                await self.processing_task
+            except asyncio.CancelledError:
+                pass
+        # Add monitor cleanup
+        self.system_monitor.stop()
+        self.tts_service.cleanup()
+
+    async def _process_queue(self):
+        while True:
+            try:
+                # Wait if paused or stopped
+                if self.is_paused.is_set() or self.is_stopped.is_set():
+                    await asyncio.sleep(0.1)
+                    continue
+
+                item = await self.queue_manager.get_next_item()
+                if item is None:
+                    await asyncio.sleep(0.1)
+                    continue
+
+                self.queue_manager.processing.set()
+                self.queue_manager.currently_playing = item.id
+                item.status = "processing"
+
+                try:
+                    if not self.is_stopped.is_set():
+                        await self.tts_service.synthesize_and_play(item.text)
+                        item.status = "completed"
+                except Exception as e:
+                    item.status = "failed"
+                    self.logger.error(f"Failed to process {item.id}: {e}")
+
+                self.queue_manager.currently_playing = None
+                self.queue_manager.processing.clear()
+
+            except Exception as e:
+                self.logger.error(f"Queue processing error: {e}")
+                await asyncio.sleep(1)
+                
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    service = PiperTTSServiceWrapper()
+    app.state.service = service
+    await service.start_processing()
+    yield
+    # Shutdown
+    await service.cleanup()
+    
+setup_logging()
+app = FastAPI(lifespan=lifespan)
+    
+@app.middleware("http")
+async def add_timing_middleware(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    
+    # Use a standard logger instead of uvicorn's access logger
+    logger = logging.getLogger("app.timing")
+    logger.info(
+        f"{request.method} {request.url.path} completed in {process_time:.3f}s"
+    )
+    return response
+
+async def rate_limit():
+    global last_request_time
+    current_time = time.time()
+    if current_time - last_request_time < RATE_LIMIT_SECONDS:
+        raise HTTPException(429, "Too many requests")
+    last_request_time = current_time
+    
+@app.post("/pause")
+async def pause_playback():
+    try:
+        service = app.state.service
+        await service.pause()
+        return {"status": "paused"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+@app.post("/resume")
+async def resume_playback():
+    try:
+        service = app.state.service
+        await service.resume()
+        return {"status": "resumed"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/stop")
+async def stop_playback():
+    try:
+        service = app.state.service
+        sd.stop()
+        service.is_stopped.set()
+        service.queue_manager.processing.clear()
+        
+        # Clear queues
+        while not service.queue_manager.regular_queue.empty():
+            await service.queue_manager.regular_queue.get()
+        while not service.queue_manager.priority_queue.empty():
+            await service.queue_manager.priority_queue.get()
+        
+        service.queue_manager.items.clear()
+        service.queue_manager.currently_playing = None
+        return {"status": "stopped"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@app.post("/tts")
+async def text_to_speech(
+    request: TTSRequest,
+    _=Depends(rate_limit),
+):
+    if not request.text.strip():
+        raise HTTPException(400, "Empty text not allowed")
+    
+    service = app.state.service
+    try:
+        task_id = await service.queue_manager.add_item(request.text, request.priority)
+        return {"task_id": task_id}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+@app.get("/metrics")
+async def get_metrics():
+    try:
+        service = app.state.service
+        metrics = service.system_monitor.get_metrics()
+        queue_status = service.queue_manager.get_queue_status()
+        return {
+            "system_metrics": metrics,
+            "queue_metrics": {
+                "priority_queue_size": queue_status["priority_queue_size"],
+                "regular_queue_size": queue_status["regular_queue_size"],
+                "active_items": len(queue_status["items"])
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/status")
+async def get_status():
+    """Get service status"""
+    try:
+        service = app.state.service
+        status = service.queue_manager.get_queue_status()
+        logging.getLogger("uvicorn.access").info(f"Status request - Queue size: {len(status['items'])}")
+        return status
+    except Exception as e:
+        logging.error(f"Error getting status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/status/{task_id}")
+async def get_task_status(task_id: str):
+    """Get specific task status"""
+    service = app.state.service
+    if task_id not in service.queue_manager.items:
+        raise HTTPException(status_code=404, detail="Task not found")
+    item = service.queue_manager.items[task_id]
+    return {
+        "id": item.id,
+        "status": item.status,
+        "queued_at": item.timestamp,
+        "text": item.text,
+        "priority": item.priority
+    }
+    
+class SystemMonitor:
+    def __init__(self, sampling_interval: float = 1.0):
+        self.sampling_interval = sampling_interval
+        self.cpu_usage = []
+        self.memory_usage = []
+        self.start_time = datetime.now()
+        self.monitor_thread = None
+        self.stop_event = threading.Event()
+        
+    def start(self):
+        self.monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
+        self.monitor_thread.start()
+        
+    def _monitor_loop(self):
+        while not self.stop_event.is_set():
+            self.cpu_usage.append(psutil.cpu_percent(interval=None))
+            self.memory_usage.append(psutil.Process().memory_percent())
+            
+            # Keep last hour of metrics
+            max_samples = int(3600 / self.sampling_interval)
+            if len(self.cpu_usage) > max_samples:
+                self.cpu_usage = self.cpu_usage[-max_samples:]
+                self.memory_usage = self.memory_usage[-max_samples:]
+                
+            time.sleep(self.sampling_interval)
+            
+    def stop(self):
+        self.stop_event.set()
+        if self.monitor_thread:
+            self.monitor_thread.join()
+            
+    def get_metrics(self):
+        return {
+            "uptime_seconds": (datetime.now() - self.start_time).total_seconds(),
+            "cpu_current": self.cpu_usage[-1] if self.cpu_usage else 0,
+            "cpu_average": sum(self.cpu_usage) / len(self.cpu_usage) if self.cpu_usage else 0,
+            "memory_current": self.memory_usage[-1] if self.memory_usage else 0,
+            "memory_average": sum(self.memory_usage) / len(self.memory_usage) if self.memory_usage else 0
+        }
+
+class OptimizedPiperTTSService(PiperTTSService):
+    def __init__(self, config: Optional[PiperConfig] = None):
+        super().__init__(config)
+        self._setup_signal_handlers()
+        self.max_text_length = 1000
+        
+    def _setup_signal_handlers(self):
+        signal.signal(signal.SIGTERM, self._handle_shutdown)
+        signal.signal(signal.SIGINT, self._handle_shutdown)
+        
+    def _handle_shutdown(self, *args: Any):
+        self.cleanup()
+
+    @lru_cache(maxsize=50)  # Replace manual cache with LRU cache
+    def _cache_audio(self, text: str) -> np.ndarray:
+        return self._generate_audio_sync(text)
+        
+    def validate_input(self, text: str) -> str:
+        if len(text) > self.max_text_length:
+            raise ValueError(f"Text exceeds maximum length of {self.max_text_length}")
+        # Basic sanitization
+        text = re.sub(r'[^\w\s.,!?-]', '', text)
+        return text.strip()
+    
+    def _generate_audio_sync(self, text: str) -> np.ndarray:
+        """Generate audio data synchronously"""
+        temp_path = os.path.join(self.temp_dir, f"temp_{threading.get_ident()}.wav")
+        try:
+            with wave.open(temp_path, 'wb') as wav_file:
+                wav_file.setnchannels(1)
+                wav_file.setsampwidth(2)
+                wav_file.setframerate(self.config.sample_rate)
+                self.voice.synthesize(text, wav_file)
+            
+            audio_data, _ = sf.read(temp_path)
+            return audio_data
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    async def _play_cached_audio(self, audio_data: np.ndarray):
+        max_retries = 3
+        retry_delay = 1  # seconds
+        
+        for attempt in range(max_retries):
+            try:
+                self._current_audio_event.clear()
+                self.logger.info("Playing cached audio")
+                sd.play(audio_data, self.config.sample_rate, blocking=True)
+                self.logger.info("Cached audio playback finished")
+                return
+            except Exception as e:
+                self.logger.error(f"Audio playback error (attempt {attempt + 1}/{max_retries}): {e}")
+                self.audio_manager.reset_device()
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+        
+        raise RuntimeError("Failed to play audio after multiple attempts")
+        
+    async def synthesize_and_play(self, text: str, retries: int = 3) -> None:
+        text = self.validate_input(text)
+        
+        for attempt in range(retries):
+            try:
+                audio_data = self._cache_audio(text)
+                await self._play_cached_audio(audio_data)
+                return
+            except Exception as e:
+                if attempt == retries - 1:
+                    raise
+                self.logger.warning(f"Retry {attempt + 1}/{retries} due to: {e}")
+                await asyncio.sleep(1)
+
+class OptimizedPiperTTSServiceWrapper(PiperTTSServiceWrapper):
+    def __init__(self, config: Optional[PiperConfig] = None):
+        self.tts_service = OptimizedPiperTTSService(config)
+        self.queue_manager = QueueManager()
+        self.processing_task = None
+        self.system_monitor = SystemMonitor()
+        self.system_monitor.start()
+        
+    async def cleanup(self):
+        await super().cleanup()
+        self.system_monitor.stop()
+        
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+    max_age=3600,
+)
+
+if __name__ == "__main__":
+    config = uvicorn.Config(
+        app,
+        host="0.0.0.0",
+        port=8912,
+        workers=4,  # Increased workers
+        loop="uvloop",
+        limit_concurrency=50,
+        backlog=2048,
+        timeout_keep_alive=5,
+        access_log=True  # Enable for monitoring
+    )
+    server = uvicorn.Server(config)
+    server.run()

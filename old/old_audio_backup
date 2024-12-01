@@ -1,0 +1,49 @@
+# The IPC key of dmix or dsnoop plugin must be unique
+defaults.pcm.rate_converter "samplerate_best"
+
+pcm.!default {
+    type asym
+    playback.pcm "playback"
+    capture.pcm "capture"
+}
+
+pcm.playback {
+    type plug
+    slave.pcm "dmixed"
+}
+
+pcm.capture {
+    type plug
+    slave.pcm "array"
+}
+
+pcm.dmixed {
+    type dmix
+    slave {
+        pcm "hw:seeed2micvoicec"
+        rate 48000
+        period_size 1024
+        buffer_size 4096
+        periods 2
+    }
+    ipc_key 555555
+}
+
+pcm.array {
+    type dsnoop
+    ipc_key 666666
+    ipc_key_add_uid true    # Add this line
+    slave {
+        pcm "hw:seeed2micvoicec"
+        channels 2
+        rate 48000
+        period_size 1024
+        buffer_size 4096
+        periods 2
+    }
+}
+
+ctl.!default {
+    type hw
+    card seeed2micvoicec
+}
